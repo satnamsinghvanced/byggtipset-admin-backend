@@ -85,7 +85,7 @@ async function generateSitemap() {
   }
 }
 
-cron.schedule("* * * * *", () => {
+cron.schedule("0 1 * * *", () => {
   console.log("⏳ Running daily sitemap cron...");
   generateSitemap();
 });
