@@ -129,25 +129,70 @@ exports.getThemeById = async (req, res) => {
     sendErrorResponse(res, error.message);
   }
 };
+// ... existing helper functions ...
 
 exports.updateTheme = async (req, res) => {
   try {
-    const settings = await Website_Settings.findById(req.query.id);
-    if (!settings) {
-      return sendErrorResponse(res, "Theme not found", 404);
-    }
-    if (!settings.theme) settings.theme = {};
+    const id = req.params.id || req.query.id;
+    let settings;
 
+    // Fix: Handle the "new" case properly for the first-ever save
+    if (id === "new" || !id) {
+      settings = new Website_Settings({ theme: req.body, logos: {} });
+    } else {
+      settings = await Website_Settings.findById(id);
+    }
+
+    if (!settings) return sendErrorResponse(res, "Theme settings not found", 404);
+
+    if (!settings.theme) settings.theme = {};
+    
+    // Merge new colors into the existing theme object
     Object.keys(req.body).forEach((key) => {
       settings.theme[key] = req.body[key];
     });
+
     const saved = await settings.save();
-    sendSuccessResponse(res, "Theme updated successfully.", saved);
+    sendSuccessResponse(res, "Theme saved successfully.", saved);
   } catch (error) {
+    if (error.name === "CastError") return sendErrorResponse(res, "Invalid ID format", 400);
     handleValidationError(error, res);
   }
 };
 
+exports.uploadLogo = async (req, res) => {
+  try {
+    const id = req.query.id || req.params.id;
+    if (!id) return sendErrorResponse(res, "Theme ID required", 400);
+
+    const theme = await Website_Settings.findById(id);
+    if (!theme) return sendErrorResponse(res, "Theme not found", 404);
+
+    // Update image paths from Multer
+    if (req.files?.logo) theme.logos.logo = req.files.logo[0].path;
+    if (req.files?.logoDark) theme.logos.logoDark = req.files.logoDark[0].path;
+    if (req.files?.lettermark) theme.logos.lettermark = req.files.lettermark[0].path;
+    if (req.files?.tagline) theme.logos.tagline = req.files.tagline[0].path;
+
+    // Handle Wordmark (File or Text)
+    if (req.files?.wordmark) {
+      theme.logos.wordmark = req.files.wordmark[0].path;
+    } else if (req.body.wordmarkText) {
+      theme.logos.wordmark = req.body.wordmarkText;
+    }
+
+    if (req.files?.wordmarkDark) {
+      theme.logos.wordmarkDark = req.files.wordmarkDark[0].path;
+    } else if (req.body.wordmarkDarkText) {
+      theme.logos.wordmarkDark = req.body.wordmarkDarkText;
+    }
+
+    await theme.save();
+    sendSuccessResponse(res, "Logos updated successfully.", theme);
+  } catch (error) {
+    handleValidationError(error, res);
+  }
+};
 exports.deleteTheme = async (req, res) => {
   try {
     const theme = await Website_Settings.findByIdAndDelete(req.query.id);
@@ -158,39 +203,39 @@ exports.deleteTheme = async (req, res) => {
   }
 };
 
-exports.uploadLogo = async (req, res) => {
-  try {
-    if (!req.files && Object.keys(req.body).length === 0) {
-      return sendErrorResponse(res, "No data provided", 400);
-    }
-    const theme = await Website_Settings.findById(req.query.id);
-    if (!theme) return sendErrorResponse(res, "Theme not found", 404);
-    if (req.files?.logo) {
-      theme.logos.logo = req.files.logo[0].path;
-    }
-    if (req.files?.logoDark) {
-      theme.logos.logoDark = req.files.logoDark[0].path;
-    }
-    if (req.files?.wordmark) {
-      theme.logos.wordmark = req.files.wordmark[0].path;
-    } else if (req.body.wordmarkText) {
-      theme.logos.wordmark = req.body.wordmarkText;
-      t;
-    }
-    if (req.files?.wordmarkDark) {
-      theme.logos.wordmarkDark = req.files.wordmarkDark[0].path;
-    } else if (req.body.wordmarkDarkText) {
-      theme.logos.wordmarkDark = req.body.wordmarkDarkText;
-    }
-    if (req.files?.lettermark) {
-      theme.logos.lettermark = req.files.lettermark[0].path;
-    }
-    if (req.files?.tagline) {
-      theme.logos.tagline = req.files.tagline[0].path;
-    }
-    await theme.save();
-    sendSuccessResponse(res, "Logos updated successfully.", theme);
-  } catch (error) {
-    handleValidationError(error, res);
-  }
-};
+// exports.uploadLogo = async (req, res) => {
+//   try {
+//     if (!req.files && Object.keys(req.body).length === 0) {
+//       return sendErrorResponse(res, "No data provided", 400);
+//     }
+//     const theme = await Website_Settings.findById(req.query.id);
+//     if (!theme) return sendErrorResponse(res, "Theme not found", 404);
+//     if (req.files?.logo) {
+//       theme.logos.logo = req.files.logo[0].path;
+//     }
+//     if (req.files?.logoDark) {
+//       theme.logos.logoDark = req.files.logoDark[0].path;
+//     }
+//     if (req.files?.wordmark) {
+//       theme.logos.wordmark = req.files.wordmark[0].path;
+//     } else if (req.body.wordmarkText) {
+//       theme.logos.wordmark = req.body.wordmarkText;
+//       t;
+//     }
+//     if (req.files?.wordmarkDark) {
+//       theme.logos.wordmarkDark = req.files.wordmarkDark[0].path;
+//     } else if (req.body.wordmarkDarkText) {
+//       theme.logos.wordmarkDark = req.body.wordmarkDarkText;
+//     }
+//     if (req.files?.lettermark) {
+//       theme.logos.lettermark = req.files.lettermark[0].path;
+//     }
+//     if (req.files?.tagline) {
+//       theme.logos.tagline = req.files.tagline[0].path;
+//     }
+//     await theme.save();
+//     sendSuccessResponse(res, "Logos updated successfully.", theme);
+//   } catch (error) {
+//     handleValidationError(error, res);
+//   }
+// };

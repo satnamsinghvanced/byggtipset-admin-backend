@@ -2,73 +2,73 @@ const mongoose = require("mongoose")
 const FooterSchema = new mongoose.Schema(
   {
     header: {
-      title: { type: String, required: true },
-      description: { type: String, required: true },
-      button: { type: String, required: true },
-      buttonLink: { type: String, required: true }, 
+      title: { type: String,  },
+      description: { type: String,  },
+      button: { type: String,  },
+      buttonLink: { type: String,  }, 
     },
 
     articles: [
       {
-        title: { type: String, required: true },
-        href: { type: String, required: true },
+        title: { type: String,  },
+        href: { type: String,  },
       },
     ],
 
     places: [
       {
-        title: { type: String, required: true },
-        href: { type: String, required: true },
+        title: { type: String,  },
+        href: { type: String,  },
       },
     ],
 
     companies: [
       {
-        title: { type: String, required: true },
-        href: { type: String, required: true },
+        title: { type: String,  },
+        href: { type: String, },
       },
     ],
 
     exploreLinks: [
       {
-        text: { type: String, required: true },
-        href: { type: String, required: true },
+        text: { type: String, },
+        href: { type: String,  },
       },
     ],
 
     socialLinks: [
       {
-        icon: { type: String, required: false }, 
-        href: { type: String, required: true },
+        icon: { type: String, }, 
+        href: { type: String,  },
         newPage: { type: Boolean, default: false },
       },
     ],
 
     contactInfo: [
       {
-        type: { type: String, enum: ["phone", "email", "location"], required: true },
-        value: { type: String, required: true },
-        href: { type: String, required: true },
+        type: { type: String, enum: ["phone", "email", "location"],  },
+        value: { type: String, required: false },
+        href: { type: String, required: false },
         newPage: { type: Boolean, default: false },
       },
     ],
 
     footerLinks: [
       {
-        text: { type: String, required: true },
-        href: { type: String, required: true },
+        text: { type: String, required: false },
+        href: { type: String, required: false },
       },
     ],
     footerText:[
       {
-        text: { type: String, required: true },
+        text: { type: String, required: false },
       },
     ],
     address:{
       text:{type:String , default: ""}
     }
   },
-  { timestamps: true }
+  { timestamps: false }
 );
 
 module.exports = mongoose.model("footer", FooterSchema);

@@ -56,25 +56,43 @@ exports.getTermOfServiceId = async (req, res) => {
 exports.updateTermOfService = async (req, res) => {
   try {
     const { title, description, ...restOfData } = req.body;
+    const { id } = req.params;
 
-    const updated = await TermOfService.findByIdAndUpdate(
-      req.params.id,
-      { title, description, ...restOfData },
-      { new: true }
-    );
+    let result;
 
-    if (!updated) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Term of service not found." });
+    if (id === "new") {
+      // 1. Logic for creating a new document if ID is "new"
+      result = await TermOfService.create({
+        title,
+        description,
+        ...restOfData,
+      });
+    } else {
+      // 2. Logic for updating an existing document
+      result = await TermOfService.findByIdAndUpdate(
+        id,
+        { title, description, ...restOfData },
+        { new: true, runValidators: true }
+      );
+    }
+
+    if (!result) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Term of service record not found." 
+      });
     }
 
     res.status(200).json({
       success: true,
-      message: "Term of service updated successfully.",
-      data: updated,
+      message: id === "new" ? "Created successfully." : "Updated successfully.",
+      data: result,
     });
   } catch (err) {
+    // If the error is a cast error (invalid ID format), send a clearer message
+    if (err.name === 'CastError') {
+      return res.status(400).json({ success: false, message: "Invalid ID format." });
+    }
     res.status(500).json({ success: false, message: err.message });
   }
 };

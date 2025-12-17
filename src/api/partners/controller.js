@@ -371,21 +371,24 @@ exports.setPartnerLimit = async (req, res) => {
 };
 exports.getPartnerLimit = async (req, res) => {
   try {
-    const limit = await partnerLimit.findOne();
+    // 1. Try to find the existing limit record
+    let limitData = await partnerLimit.findOne();
 
-    if (!limit) {
-      return res.status(404).json({
-        success: false,
-        message: "Limit not found",
+    // 2. If it doesn't exist, create it automatically with a default of 0
+    if (!limitData) {
+      limitData = await partnerLimit.create({
+        limit: 0,
+        // Add any other required default fields here
       });
     }
 
+    // 3. Return the data (now guaranteed to exist)
     return res.status(200).json({
       success: true,
-      data: limit,
+      data: limitData.limit, // This will be 0 if it was just created
     });
   } catch (error) {
-    console.error("Error fetching partner limit:", error);
+    console.error("Error fetching or auto-creating partner limit:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error",

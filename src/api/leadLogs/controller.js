@@ -1,76 +1,60 @@
 const Lead = require("../../../models/user");
 const Partner = require("../../../models/partners");
 const formSelect = require("../../../models/formSelect");
-
 exports.getAllLeads = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-
     const search = req.query.search || "";
     const status = req.query.status || "";
 
     const skip = (page - 1) * limit;
 
+    // Build initial filter
     let filter = {};
-
     if (status) filter.status = status;
 
     if (search) {
-      filter.$or = [
+      const orFilters = [
         { "dynamicFields.values.name": { $regex: search, $options: "i" } },
         { "dynamicFields.values.email": { $regex: search, $options: "i" } },
         { "dynamicFields.values.phone": { $regex: search, $options: "i" } },
       ];
+
+      // Add uniqueId filter if search is numeric
+      if (!isNaN(search)) {
+        orFilters.push({ uniqueId: Number(search) });
+      }
+
+      filter.$or = orFilters;
     }
 
+    // Count total documents
     const total = await Lead.countDocuments(filter);
 
-    const leads = await Lead.find(filter)
+    // Fetch leads with partners populated
+    let leads = await Lead.find(filter)
       .populate("partnerIds", "name email phone wishes leadTypes")
       .skip(skip)
       .limit(limit)
       .sort({ createdAt: -1 });
 
-    // const formatted = leads.map((lead) => {
-    //   const leadObj = lead.toObject();
-    //   const partner = lead.partnerIds?.[0] || null;
-
-    //   let computedProfit = 0;
-
-    //   if (partner) {
-    //     const leadPreference = lead.dynamicFields?.preferranceType;
-
-    //     // Check partner wishes
-    //     const preferenceWish = partner.wishes?.find(
-    //       (w) => w.question === "preferranceType"
-    //     );
-
-    //     const isSupported =
-    //       preferenceWish &&
-    //       preferenceWish.expectedAnswer?.includes(leadPreference);
-
-    //     if (isSupported) {
-    //       // Pick highest priced leadType
-    //       if (partner.leadTypes?.length) {
-    //         const highestPrice = Math.max(
-    //           ...partner.leadTypes.map((lt) => lt.price || 0)
-    //         );
-    //         computedProfit = highestPrice;
-    //       }
-    //     }
-    //   }
-
-    //   return {
-    //     ...leadObj,
-    //     partner,
-    //     profit: computedProfit,
-    //   };
-    // });
+    // Filter partnerIds inside each lead (without removing lead)
+    if (search) {
+      const lowerSearch = search.toLowerCase();
+      leads = leads.map((lead) => ({
+        ...lead.toObject(),
+        partnerIds: lead.partnerIds.filter(
+          (p) =>
+            p.name?.toLowerCase().includes(lowerSearch) ||
+            p.email?.toLowerCase().includes(lowerSearch)
+        ),
+      }));
+    }
 
     res.json({
       success: true,
-      leads: leads,
+      leads,
       pagination: {
         total,
         page,
@@ -86,6 +70,8 @@ exports.getAllLeads = async (req, res) => {
     });
   }
 };
+
+
 exports.updateLeadStatus = async (req, res) => {
   try {
     const { leadId, status } = req.body;
