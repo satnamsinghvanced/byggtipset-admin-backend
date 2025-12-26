@@ -8,8 +8,17 @@ const storage = multer.diskStorage({
     fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
+
   filename: (req, file, cb) => {
-    cb(null, file.originalname);
+    const ext = path.extname(file.originalname);
+
+    const baseName = path
+      .basename(file.originalname, ext)
+      .replace(/\s+/g, "_")       // ✅ remove spaces
+      .replace(/[^a-zA-Z0-9_-]/g, ""); // ✅ remove special chars
+
+    const fileName = `${baseName}-${Date.now()}${ext}`;
+    cb(null, fileName);
   },
 });
 
@@ -20,23 +29,29 @@ const fileFilter = (req, file, cb) => {
     "image/png",
     "image/webp",
     "text/csv",
-    "application/vnd.ms-excel", // .xls
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
+    "image/svg+xml",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   ];
+
   if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb( new Error("Only JPEG, JPG, PNG, WEBP, CSV, XLS, XLSX files are allowed"), false);
+    cb(
+      new Error(
+        "Only JPEG, JPG, PNG, WEBP, SVG, CSV, XLS, XLSX files are allowed"
+      ),
+      false
+    );
   }
 };
 
 const uploadImage = multer({
   storage,
   limits: {
-    fileSize: 1024 * 1024 * 10,
+    fileSize: 1024 * 1024 * 10, // 10MB
   },
   fileFilter,
 });
 
 module.exports = uploadImage;
-  

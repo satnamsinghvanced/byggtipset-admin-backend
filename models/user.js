@@ -20,8 +20,14 @@ const userSchema = new Schema(
     },
     partnerIds: [
       {
-        type: Schema.Types.ObjectId,
-        ref: "CollaboratePartners",
+        partnerId: {
+          type: Schema.Types.ObjectId,
+          ref: "CollaboratePartners",
+        },
+        leadPrice: {
+          type: Number,
+          default: 0,
+        },
       },
     ],
 
@@ -31,7 +37,23 @@ const userSchema = new Schema(
     },
 
     dynamicFields: { type: mongoose.Schema.Types.Mixed, default: {} },
+    emailResults: [
+      {
+        partnerId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "CollaboratePartners",
+        },
+        email: String,
+        status: {
+          type: String,
+          enum: ["sent", "failed", "pending"],
+        },
+        sentAt: Date,
+        error: String,
+      },
+    ],
   },
+
   { timestamps: true }
 );
 userSchema.pre("save", async function (next) {

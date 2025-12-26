@@ -128,6 +128,28 @@ exports.getPartners = async (req, res) => {
     res.status(400).json({ success: false, message: error.message });
   }
 };
+exports.getAllPartners = async (req, res) => {
+  try {
+    const { search } = req.query;
+
+    const query = {};
+    if (search) {
+      query.$or = [{ name: { $regex: search, $options: "i" } }];
+    }
+    const total = await Partners.countDocuments(query);
+    const partners = await Partners.find(query)
+      .sort({ createdAt: -1 }).select("_id name email");
+
+    res.status(200).json({
+      success: true,
+      message: "Partners fetched successfully.",
+      data: partners,
+
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
 
 exports.getPartnerById = async (req, res) => {
   try {

@@ -10,6 +10,6 @@ router.post('/forgot-password', forgotPassword);
 router.post('/resend-otp', resendOtp);
 router.post('/change-password',auth, changePassword);
 router.get('/details',auth, getUserDetails );
-router.put("/update-profile", updateProfile);
+router.put("/update-profile", auth, updateProfile);
 
 module.exports = router;

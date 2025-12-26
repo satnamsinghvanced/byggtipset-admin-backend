@@ -107,24 +107,45 @@ exports.getCountyById = async (req, res) => {
 
 exports.updateCounty = async (req, res) => {
   try {
-    const { name, slug, excerpt, icon , ...restOfData} = req.body;
-    const imagePath = req.file ? `/uploads/${req.file.filename}` : null;
+    const { name, slug, excerpt, icon, companies, ...restOfData } = req.body;
+
+    const imagePath = req.file ? `/uploads/${req.file.filename}` : icon;
+
+    let parsedCompanies = companies;
+
+    // ✅ Parse companies if it comes as string
+    if (typeof companies === "string") {
+      parsedCompanies = JSON.parse(companies);
+    }
+
     const county = await County.findByIdAndUpdate(
       req.params.id,
-      { name, slug, excerpt, icon: imagePath , ...restOfData},
+      {
+        name,
+        slug,
+        excerpt,
+        icon: imagePath,
+        companies: parsedCompanies, // ✅ now correct type
+        ...restOfData,
+      },
       { new: true, runValidators: true }
     );
 
-    if (!county) return res.status(404).json({ message: "County not found" });
+    if (!county) {
+      return res.status(404).json({ success: false, message: "County not found" });
+    }
+
     res.status(200).json({
       success: true,
       message: "County updated successfully.",
       data: county,
     });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
 exports.deleteCounty = async (req, res) => {
   try {
     const county = await County.findByIdAndDelete(req.params.id);

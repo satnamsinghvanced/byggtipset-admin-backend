@@ -25,6 +25,9 @@ const partnersSchema = new mongoose.Schema(
     isActive: { type: Boolean, default: true },
     leads: {
       total: { type: Number, default: 0 },
+      lastMonth: { type: Number, default: 0 },
+      currentMonth: { type: Number, default: 0 },
+      lastReset: { type: Date, default: new Date() },
     },
     leadTypes: [
       {

@@ -1,6 +1,16 @@
 const Place = require("../../../models/places");
 
-
+function stripHtml(html = "") {
+  return html
+    .replace(/<\/p>\s*<p>/gi, "\n\n")
+    .replace(/<\/?p>/gi, "")
+    .replace(/<\/?h2>/gi, "")
+    .replace(/<\/?h3>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/?[^>]+>/gi, "")
+    .trim();
+}
+ 
 exports.create = async (req, res) => {
   try {
     const {
@@ -46,14 +56,14 @@ exports.create = async (req, res) => {
     if (robots) {
       parsedRobots = typeof robots === "string" ? JSON.parse(robots) : robots;
     }
-
+const cleanDescription = stripHtml(description);
     const newCity = await Place.create({
       name: name.trim(),
       countyId,
       slug: slug.trim(),
       excerpt: excerpt.trim(),
       title: title.trim(),
-      description: description.trim(),
+      description: cleanDescription,
       icon: iconPath,
       rank: rank ? parseInt(rank) : 0,
       companies: parsedCompanies,
@@ -161,7 +171,9 @@ exports.update = async (req, res) => {
     // Handle icon update
     const iconFile = req.file || req.files?.icon?.[0];
     if (iconFile) updatedFields.icon = `uploads/${iconFile.filename}`;
-
+if (description) {
+  updatedFields.description = stripHtml(description);
+}
     // Parse companies and robots if sent as JSON strings
     if (companies) {
       updatedFields.companies = typeof companies === "string" ? JSON.parse(companies) : companies;

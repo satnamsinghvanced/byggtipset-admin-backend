@@ -9,13 +9,14 @@ const {
   getAnwserOptionsForQuestion,
   setPartnerLimit,
   getPartnerLimit,
-  leadsOfPartner
+  leadsOfPartner,getAllPartners
 } = require("./controller");
 
 const router = express.Router();
 
 router.post("/create", createPartner);
 router.get("/", getPartners);
+router.get("/all", getAllPartners);
 router.get("/details", getPartnerById);
 router.put("/update", updatePartner);
 router.delete("/delete", deletePartner);
