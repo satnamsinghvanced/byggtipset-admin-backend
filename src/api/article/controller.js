@@ -1,4 +1,5 @@
 const Article = require("../../../models/article");
+const slugSanitizer = require("../../helper/slugSanitizer");
 
 exports.createArticle = async (req, res) => {
   try {
@@ -15,11 +16,16 @@ exports.createArticle = async (req, res) => {
       ...restOfData
     } = req.body;
 
+    if (!slug || slug.trim() === "") {
+      slug = slugSanitizer(title);
+    } else {
+      slug = slugSanitizer(slug);
+    }
     if (articleTags) {
       try {
         articleTags = JSON.parse(articleTags);
       } catch {
-        articleTags = articleTags.split(",").map(t => t.trim());
+        articleTags = articleTags.split(",").map((t) => t.trim());
       }
     } else {
       articleTags = [];
@@ -83,7 +89,6 @@ exports.createArticle = async (req, res) => {
   }
 };
 
-
 exports.getArticles = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -93,7 +98,6 @@ exports.getArticles = async (req, res) => {
 
     let filter = {};
     if (search) {
-
       filter = {
         $or: [
           { title: { $regex: search, $options: "i" } },
@@ -130,7 +134,6 @@ exports.getArticles = async (req, res) => {
   }
 };
 
-
 exports.getSingleArticle = async (req, res) => {
   try {
     const article = await Article.findById(req.params.id)
@@ -165,11 +168,16 @@ exports.updateArticle = async (req, res) => {
       ...restOfData
     } = req.body;
 
+    if (!slug || slug.trim() === "") {
+      slug = slugSanitizer(title);
+    } else {
+      slug = slugSanitizer(slug);
+    }
     if (articleTags) {
       try {
         articleTags = JSON.parse(articleTags);
       } catch {
-        articleTags = articleTags.split(",").map(t => t.trim());
+        articleTags = articleTags.split(",").map((t) => t.trim());
       }
     }
 
@@ -267,7 +275,6 @@ exports.updateArticle = async (req, res) => {
     return res.status(400).json({ success: false, message: error.message });
   }
 };
-
 
 exports.deleteArticle = async (req, res) => {
   try {

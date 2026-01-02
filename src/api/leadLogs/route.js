@@ -1,9 +1,10 @@
 const express = require("express");
-const { getAllLeads,getLeadById,updateLeadStatus,updateLeadProfit, getPartnerLeadInvoiceSummary,updateLeadPartnerPrice, getLeadByPartnerName } = require("./controller");
+const { getAllLeads,getLeadById,updateLeadStatus,updateLeadProfit, getPartnerLeadInvoiceSummary,updateLeadPartnerPrice, getLeadByPartnerName ,exportLeadsCSV} = require("./controller");
 
 const router = express.Router();
 
 router.get("/all", getAllLeads);
+router.get("/export/csv", exportLeadsCSV);
 router.get("/details/:id", getLeadById);
 router.get("/partner-leads", getLeadByPartnerName);
 router.get("/partner-summary", getPartnerLeadInvoiceSummary);

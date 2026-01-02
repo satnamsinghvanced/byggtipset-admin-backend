@@ -66,6 +66,7 @@ const homePageSchema = new mongoose.Schema(
       {
         title: { type: String },
         subHeading: { type: String },
+        subHeading1: { type: String },
         description: [{ type: String }],
         image: {
           type: String,

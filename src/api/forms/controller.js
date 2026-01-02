@@ -96,9 +96,9 @@ exports.getStepsOfForm = async (req, res) => {
     if (!form)
       return res.status(404).json({ success: false, msg: "Form not found" });
     const formSteps = await FormBuilder.findOne({formId:form._id});
-    if (!formSteps){
-      return res.status(404).json({ success: false, msg: "Form steps not found" });
-    }
+    // if (!formSteps){
+    //   return res.status(404).json({ success: false, msg: "Form steps not found" });
+    // }
 
     return res.json({ success: true, data: formSteps });
 

@@ -1,4 +1,5 @@
 const Category = require("../../../models/category");
+const FAQ = require("../../../models/faq");
 
 // Create Category
 exports.createCategory = async (req, res) => {
@@ -67,15 +68,24 @@ exports.updateCategory = async (req, res) => {
 // Delete Category
 exports.deleteCategory = async (req, res) => {
   try {
-     const {id} = req.query;
+    const { id } = req.query;
+
     const category = await Category.findByIdAndDelete(id);
 
     if (!category) {
       return res.status(404).json({ message: "Category not found" });
     }
 
-    res.json({ success: true, message: "Category deleted successfully" });
+    // Delete all FAQs linked to this category
+    await FAQ.deleteMany({ categoryId: id });
+
+    res.json({
+      success: true,
+      message: "Category and related FAQs deleted successfully"
+    });
+
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+

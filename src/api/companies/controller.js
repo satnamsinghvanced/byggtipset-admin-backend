@@ -1,12 +1,14 @@
 const Company = require("../../../models/companies");
+const slugSanitizer = require("../../helper/slugSanitizer");
 
 exports.createCompany = async (req, res) => {
   try {
-    const {
+    let {
       companyName,
       companyImage,
       address,
       email,
+      slug,
       websiteAddress,
       zipCode,
       description,
@@ -14,13 +16,17 @@ exports.createCompany = async (req, res) => {
       brokerSites,
       ...restOfData
     } = req.body;
-
-    const existingCompany = await Company.findOne({ email });
-    if (existingCompany) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Company already exists" });
+    if (!slug || slug.trim() === "") {
+      slug = slugSanitizer(companyName);
+    } else {
+      slug = slugSanitizer(slug);
     }
+    // const existingCompany = await Company.findOne({ email });
+    // if (existingCompany) {
+    //   return res
+    //     .status(400)
+    //     .json({ success: false, message: "Company already exists" });
+    // }
 
     const newCompany = new Company({
       companyName,
@@ -28,6 +34,7 @@ exports.createCompany = async (req, res) => {
       email,
       address,
       zipCode,
+      slug,
       websiteAddress,
       description,
       extractor,
@@ -88,13 +95,12 @@ exports.getCompaniesAll = async (req, res) => {
     if (search) {
       filter.companyName = { $regex: search, $options: "i" };
     }
-    const companies = await Company.find(filter)
-    .sort({ createdAt: -1 });
+    const companies = await Company.find(filter).sort({ createdAt: -1 });
 
     res.status(200).json({
       success: true,
       message: "Companies fetched successfully.",
-      data: companies
+      data: companies,
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -125,14 +131,21 @@ exports.getCompanyById = async (req, res) => {
 exports.updateCompany = async (req, res) => {
   try {
     const { id } = req.params;
-    // console.log("REQ BODY:", req.body);
+    let data = { ...req.body };
+
+    // SLUG HANDLING (NO UNIQUE CHECK)
+    if (data.slug || data.companyName) {
+      if (data.slug && data.slug.trim() !== "") {
+        data.slug = slugSanitizer(data.slug);
+      } else {
+        data.slug = slugSanitizer(data.companyName);
+      }
+    }
+
     const updatedCompany = await Company.findByIdAndUpdate(
       id,
-      { $set: req.body },
-      {
-        new: true,
-        runValidators: true,
-      }
+      { $set: data },
+      { new: true, runValidators: true }
     );
 
     if (!updatedCompany) {
@@ -150,6 +163,7 @@ exports.updateCompany = async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
 
 exports.deleteCompany = async (req, res) => {
   try {

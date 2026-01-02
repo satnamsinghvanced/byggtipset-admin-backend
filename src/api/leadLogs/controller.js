@@ -2,6 +2,8 @@ const Lead = require("../../../models/user");
 const Partner = require("../../../models/partners");
 const formSelect = require("../../../models/formSelect");
 const mongoose = require("mongoose");
+const { Parser } = require("json2csv");
+
 
 exports.getAllLeads = async (req, res) => {
   try {
@@ -75,6 +77,83 @@ exports.getAllLeads = async (req, res) => {
       success: false,
       message: "Failed to fetch leads",
     });
+  }
+};
+
+exports.exportLeadsCSV = async (req, res) => {
+  try {
+    const leads = await Lead.find({})
+      .populate("partnerIds.partnerId", "name")
+      .sort({ createdAt: -1 });
+
+    // 🔥 Fetch all forms ONE time
+    const forms = await formSelect.find({}, { _id: 1, formNumber: 1 });
+
+    // Create map: formId -> formNumber
+    const formMap = {};
+    forms.forEach((f) => {
+      formMap[f._id.toString()] = f.formNumber;
+    });
+
+    const csvData = leads.map((lead) => {
+      const values = lead.dynamicFields?.[0]?.values || {};
+      const formId = lead.dynamicFields?.[0]?.formId;
+
+      const partners = lead.partnerIds || [];
+      const partnerNames = partners.map(
+        (p) => p.partnerId?.name || "No value"
+      );
+      const partnerPrices = partners.map((p) => p.leadPrice || 0);
+
+      return {
+        ID: lead.uniqueId,
+        Status: lead.status,
+        "Lead type": lead.dynamicFields?.[0]?.formTitle || "",
+        "Lead type Id": formMap[formId] || "", // ✅ formNumber here
+
+        "Creation date": lead.createdAt
+          ? new Date(lead.createdAt).toLocaleDateString("en-GB")
+          : "",
+        "Creation time": lead.createdAt
+          ? new Date(lead.createdAt).toLocaleTimeString("en-GB")
+          : "",
+        "Creation datetime": lead.createdAt
+          ? new Date(lead.createdAt).toLocaleString("en-GB")
+          : "",
+
+        "Amount partners": partners.length,
+        "Partner 1": partnerNames[0] || "",
+        "Partner 2": partnerNames[1] || "",
+        "Partner 3": partnerNames[2] || "",
+
+        "Partner 1 profit": partnerPrices[0] || 0,
+        "Partner 2 profit": partnerPrices[1] || 0,
+        "Partner 3 profit": partnerPrices[2] || 0,
+
+        "Total profit": partnerPrices.reduce((a, b) => a + b, 0),
+
+        "Lead name": values.name || "",
+        Phone: values.phone || "",
+        "Lead e-mail": values.email || "",
+        Adresse: values.streetName || "",
+        "Postal code": values.postalCode || "",
+        "Accommodation type": values.accommodationType || "",
+        "Home size": values.homeSize || "",
+        "Room count": values.roomCount || "",
+        Condition: values.roomCondition || "",
+        "Selling timeline": values.sellingDate || "",
+      };
+    });
+
+    const parser = new Parser();
+    const csv = parser.parse(csvData);
+
+    res.header("Content-Type", "text/csv");
+    res.attachment("leads.csv");
+    return res.send(csv);
+  } catch (error) {
+    console.error("CSV Export Error:", error);
+    res.status(500).json({ message: "Failed to export CSV" });
   }
 };
 
