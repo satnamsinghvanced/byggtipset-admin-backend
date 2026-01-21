@@ -117,9 +117,17 @@ async function processRows(rows, res, filePath) {
         ? [row["Meglersider"]]
         : [];
 
+      // Generate unique slug
+      let slug = createSlug(companyName);
+      let counter = 1;
+      while (await Company.findOne({ slug })) {
+        slug = createSlug(companyName) + '-' + counter;
+        counter++;
+      }
+
       const newCompany = await Company.create({
         companyName,
-        slug: createSlug(companyName),
+        slug,
         companyImage: row["Company image"] || "",
         address: row["Address (competitor)"] || "",
         city: "",
