@@ -122,6 +122,11 @@ async function processRows(rows, res, filePath) {
       let attempt = 0;
       let newCompany;
       while (true) {
+        if (attempt > 10) {
+          skipped.push({ reason: "Too many attempts to generate unique slug", row });
+          newCompany = null;
+          break;
+        }
         try {
           newCompany = await Company.create({
             companyName,
@@ -141,12 +146,15 @@ async function processRows(rows, res, filePath) {
             slug = createSlug(companyName) + '-' + attempt;
           } else {
             skipped.push({ reason: "Error creating company: " + error.message, row });
+            newCompany = null;
             break;
           }
         }
       }
 
-      inserted.push(newCompany);
+      if (newCompany) {
+        inserted.push(newCompany);
+      }
     }
 
     fs.unlinkSync(filePath);
