@@ -119,24 +119,32 @@ async function processRows(rows, res, filePath) {
 
       // Generate unique slug
       let slug = createSlug(companyName);
-      let counter = 1;
-      while (await Company.findOne({ slug })) {
-        slug = createSlug(companyName) + '-' + counter;
-        counter++;
+      let attempt = 0;
+      let newCompany;
+      while (true) {
+        try {
+          newCompany = await Company.create({
+            companyName,
+            slug,
+            companyImage: row["Company image"] || "",
+            address: row["Address (competitor)"] || "",
+            city: "",
+            description: row["Company text"] || "",
+            extractor: extractorArray,
+            brokerSites: brokerSitesArray,
+            websiteAddress: row["Website address"] || "",
+          });
+          break;
+        } catch (error) {
+          if (error.code === 11000 && error.message.includes('slug_1')) {
+            attempt++;
+            slug = createSlug(companyName) + '-' + attempt;
+          } else {
+            skipped.push({ reason: "Error creating company: " + error.message, row });
+            break;
+          }
+        }
       }
-      console.log('Final slug for', companyName, 'is', slug, ' | ', 'counter', counter);
-
-      const newCompany = await Company.create({
-        companyName,
-        slug,
-        companyImage: row["Company image"] || "",
-        address: row["Address (competitor)"] || "",
-        city: "",
-        description: row["Company text"] || "",
-        extractor: extractorArray,
-        brokerSites: brokerSitesArray,
-        websiteAddress: row["Website address"] || "",
-      });
 
       inserted.push(newCompany);
     }
