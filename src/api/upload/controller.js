@@ -124,6 +124,7 @@ async function processRows(rows, res, filePath) {
         slug = createSlug(companyName) + '-' + counter;
         counter++;
       }
+      console.log('Final slug for', companyName, 'is', slug, ' | ', 'counter', counter);
 
       const newCompany = await Company.create({
         companyName,
