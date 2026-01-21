@@ -5,6 +5,8 @@ const Company = require("../../../models/companies");
 const Place = require("../../../models/places");
 const County = require("../../../models/county");
 const xlsx = require("xlsx");
+const { normalizeText } = require("../../../utils/normalizeText");
+const { createSlug } = require("../../../utils/createSlug");
 
 exports.uploadProfileImage = async (req, res) => {
   try {
@@ -39,9 +41,16 @@ exports.uploadCompanies = async (req, res) => {
     let rows = [];
 
     if (filePath.endsWith(".csv")) {
-      fs.createReadStream(filePath)
+      fs.createReadStream(filePath, { encoding: 'utf-8' })
         .pipe(csv())
-        .on("data", (row) => rows.push(row))
+        .on("data", (row) => {
+          // Normalize each field in the row
+          const normalizedRow = {};
+          Object.keys(row).forEach(key => {
+            normalizedRow[key] = normalizeText(row[key]);
+          });
+          rows.push(normalizedRow);
+        })
         .on("end", async () => {
           await processRows(rows, res, filePath);
         });
@@ -49,6 +58,15 @@ exports.uploadCompanies = async (req, res) => {
       const workbook = xlsx.readFile(filePath);
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       rows = xlsx.utils.sheet_to_json(sheet);
+
+      rows = rows.map(row => {
+        const normalizedRow = {};
+        Object.keys(row).forEach(key => {
+          normalizedRow[key] = normalizeText(row[key]);
+        });
+        return normalizedRow;
+      });
+
       await processRows(rows, res, filePath);
     }
   } catch (error) {
@@ -101,6 +119,7 @@ async function processRows(rows, res, filePath) {
 
       const newCompany = await Company.create({
         companyName,
+        slug: createSlug(companyName),
         companyImage: row["Company image"] || "",
         address: row["Address (competitor)"] || "",
         city: "",
@@ -137,7 +156,15 @@ exports.uploadPlaces = async (req, res) => {
     const filePath = req.file.path;
     const workbook = xlsx.readFile(filePath);
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = xlsx.utils.sheet_to_json(sheet);
+    let rows = xlsx.utils.sheet_to_json(sheet);
+
+    rows = rows.map(row => {
+      const normalizedRow = {};
+      Object.keys(row).forEach(key => {
+        normalizedRow[key] = normalizeText(row[key]);
+      });
+      return normalizedRow;
+    });
 
     let insertedPlaces = [];
     let insertedCounties = [];
@@ -158,7 +185,7 @@ exports.uploadPlaces = async (req, res) => {
       if (!countyExists) {
         const newCounty = await County.create({
           name: countyName,
-          slug: countyName.toLowerCase().replace(/\s+/g, "-"),
+          slug: createSlug(countyName),
           excerpt: "",
         });
         insertedCounties.push(newCounty);
@@ -172,7 +199,7 @@ exports.uploadPlaces = async (req, res) => {
     // ------------------------------------------------------------------
     for (const row of rows) {
       const name = row["Actual place name"]?.trim();
-      const slug = row["Place in url"]?.trim();
+      const slug = createSlug(row["Place in url"]?.trim());
       const countyName = row["Fylke / County"]?.trim();
 
       if (!name || !slug || !countyName) {
