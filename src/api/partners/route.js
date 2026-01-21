@@ -9,7 +9,8 @@ const {
   getAnwserOptionsForQuestion,
   setPartnerLimit,
   getPartnerLimit,
-  leadsOfPartner
+  leadsOfPartner,
+  getAllPartners
 } = require("./controller");
 
 const router = express.Router();
