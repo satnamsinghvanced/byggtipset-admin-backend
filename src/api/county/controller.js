@@ -2,13 +2,24 @@ const County = require("../../../models/county");
 
 exports.createCounty = async (req, res) => {
   try {
-    const { name, slug, excerpt,  ...restOfData} = req.body;
+    const { name, slug, excerpt, ...restOfData } = req.body;
     if (!name || !slug) {
       return res.status(400).json({ message: "All fields are required." });
     }
 
+    let createData = { name: name.trim(), slug: slug.trim(), excerpt: excerpt.trim(), ...restOfData };
+
+    // Parse companies if it's a string (from FormData JSON.stringify)
+    if (typeof createData.companies === 'string') {
+      try {
+        createData.companies = JSON.parse(createData.companies);
+      } catch (e) {
+        createData.companies = [];
+      }
+    }
+
     const existing = await County.findOne({
-      $or: [{ name: name.trim() }, { slug: slug.trim() ,   ...restOfData}],
+      $or: [{ name: name.trim() }, { slug: slug.trim() }],
     });
 
     if (existing) {
@@ -17,13 +28,9 @@ exports.createCounty = async (req, res) => {
         .json({ message: "County with that name or slug already exists." });
     }
     const imagePath = req.file ? `/uploads/${req.file.filename}` : null;
-    const county = await County.create({
-      name: name.trim(),
-      slug: slug.trim(),
-      excerpt: excerpt.trim(),
-      icon: imagePath,
-       ...restOfData
-    });
+    createData.icon = imagePath;
+
+    const county = await County.create(createData);
 
     res.status(201).json({
       success: true,
@@ -107,11 +114,22 @@ exports.getCountyById = async (req, res) => {
 
 exports.updateCounty = async (req, res) => {
   try {
-    const { name, slug, excerpt, icon , ...restOfData} = req.body;
+    const { name, slug, excerpt, icon, ...restOfData } = req.body;
     const imagePath = req.file ? `/uploads/${req.file.filename}` : null;
+    let updateData = { name, slug, excerpt, icon: imagePath, ...restOfData };
+
+    // Parse companies if it's a string (from FormData JSON.stringify)
+    if (typeof updateData.companies === 'string') {
+      try {
+        updateData.companies = JSON.parse(updateData.companies);
+      } catch (e) {
+        updateData.companies = [];
+      }
+    }
+
     const county = await County.findByIdAndUpdate(
       req.params.id,
-      { name, slug, excerpt, icon: imagePath , ...restOfData},
+      updateData,
       { new: true, runValidators: true }
     );
 

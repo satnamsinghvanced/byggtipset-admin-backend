@@ -19,6 +19,8 @@ const fileFilter = (req, file, cb) => {
     "image/jpg",
     "image/png",
     "image/webp",
+    "image/gif",
+    "image/svg+xml",
     "text/csv",
     "application/vnd.ms-excel", // .xls
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
@@ -26,7 +28,7 @@ const fileFilter = (req, file, cb) => {
   if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb( new Error("Only JPEG, JPG, PNG, WEBP, CSV, XLS, XLSX files are allowed"), false);
+    cb(new Error("Only JPEG, JPG, PNG, WEBP, CSV, svg, XLS, XLSX files are allowed"), false);
   }
 };
 
@@ -39,4 +41,3 @@ const uploadImage = multer({
 });
 
 module.exports = uploadImage;
-  
