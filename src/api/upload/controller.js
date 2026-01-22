@@ -5,7 +5,6 @@ const Company = require("../../../models/companies");
 const Place = require("../../../models/places");
 const County = require("../../../models/county");
 const xlsx = require("xlsx");
-const { normalizeText } = require("../../../utils/normalizeText");
 const { createSlug } = require("../../../utils/createSlug");
 
 exports.uploadProfileImage = async (req, res) => {
@@ -44,12 +43,7 @@ exports.uploadCompanies = async (req, res) => {
       fs.createReadStream(filePath, { encoding: 'utf-8' })
         .pipe(csv())
         .on("data", (row) => {
-          // Normalize each field in the row
-          const normalizedRow = {};
-          Object.keys(row).forEach(key => {
-            normalizedRow[key] = normalizeText(row[key]);
-          });
-          rows.push(normalizedRow);
+          rows.push(row);
         })
         .on("end", async () => {
           await processRows(rows, res, filePath);
@@ -58,14 +52,6 @@ exports.uploadCompanies = async (req, res) => {
       const workbook = xlsx.readFile(filePath);
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       rows = xlsx.utils.sheet_to_json(sheet);
-
-      rows = rows.map(row => {
-        const normalizedRow = {};
-        Object.keys(row).forEach(key => {
-          normalizedRow[key] = normalizeText(row[key]);
-        });
-        return normalizedRow;
-      });
 
       await processRows(rows, res, filePath);
     }
@@ -117,44 +103,18 @@ async function processRows(rows, res, filePath) {
         ? [row["Meglersider"]]
         : [];
 
-      // Generate unique slug
-      let slug = createSlug(companyName);
-      let attempt = 0;
-      let newCompany;
-      while (true) {
-        if (attempt > 10) {
-          skipped.push({ reason: "Too many attempts to generate unique slug", row });
-          newCompany = null;
-          break;
-        }
-        try {
-          newCompany = await Company.create({
-            companyName,
-            slug,
-            companyImage: row["Company image"] || "",
-            address: row["Address (competitor)"] || "",
-            city: "",
-            description: row["Company text"] || "",
-            extractor: extractorArray,
-            brokerSites: brokerSitesArray,
-            websiteAddress: row["Website address"] || "",
-          });
-          break;
-        } catch (error) {
-          if (error.code === 11000 && error.message.includes('slug_1')) {
-            attempt++;
-            slug = createSlug(companyName) + '-' + attempt;
-          } else {
-            skipped.push({ reason: "Error creating company: " + error.message, row });
-            newCompany = null;
-            break;
-          }
-        }
-      }
+      const newCompany = await Company.create({
+        companyName,
+        companyImage: row["Company image"] || "",
+        address: row["Address (competitor)"] || "",
+        city: "",
+        description: row["Company text"] || "",
+        extractor: extractorArray,
+        brokerSites: brokerSitesArray,
+        websiteAddress: row["Website address"] || "",
+      });
 
-      if (newCompany) {
-        inserted.push(newCompany);
-      }
+      inserted.push(newCompany);
     }
 
     fs.unlinkSync(filePath);
@@ -182,14 +142,6 @@ exports.uploadPlaces = async (req, res) => {
     const workbook = xlsx.readFile(filePath);
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     let rows = xlsx.utils.sheet_to_json(sheet);
-
-    rows = rows.map(row => {
-      const normalizedRow = {};
-      Object.keys(row).forEach(key => {
-        normalizedRow[key] = normalizeText(row[key]);
-      });
-      return normalizedRow;
-    });
 
     let insertedPlaces = [];
     let insertedCounties = [];
