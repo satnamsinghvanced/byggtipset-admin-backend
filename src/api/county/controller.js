@@ -116,7 +116,12 @@ exports.updateCounty = async (req, res) => {
   try {
     const { name, slug, excerpt, icon, ...restOfData } = req.body;
     const imagePath = req.file ? `/uploads/${req.file.filename}` : null;
-    let updateData = { name, slug, excerpt, icon: imagePath, ...restOfData };
+    let updateData = { name, slug, excerpt, ...restOfData };
+
+    // Only update icon if a new file is uploaded
+    if (imagePath) {
+      updateData.icon = imagePath;
+    }
 
     // Parse companies if it's a string (from FormData JSON.stringify)
     if (typeof updateData.companies === 'string') {
