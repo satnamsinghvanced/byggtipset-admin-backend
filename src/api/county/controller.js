@@ -18,6 +18,15 @@ exports.createCounty = async (req, res) => {
       }
     }
 
+    // Parse robots if it's a string
+    if (typeof createData.robots === 'string') {
+      try {
+        createData.robots = JSON.parse(createData.robots);
+      } catch (e) {
+        createData.robots = {};
+      }
+    }
+
     const existing = await County.findOne({
       $or: [{ name: name.trim() }, { slug: slug.trim() }],
     });
@@ -129,6 +138,15 @@ exports.updateCounty = async (req, res) => {
         updateData.companies = JSON.parse(updateData.companies);
       } catch (e) {
         updateData.companies = [];
+      }
+    }
+
+    // Parse robots if it's a string
+    if (typeof updateData.robots === 'string') {
+      try {
+        updateData.robots = JSON.parse(updateData.robots);
+      } catch (e) {
+        updateData.robots = {};
       }
     }
 
