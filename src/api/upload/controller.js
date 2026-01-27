@@ -62,13 +62,23 @@ exports.uploadCompanies = async (req, res) => {
 
 
 // ----------------------------------------------------
+// Helper to find a value in a row case-insensitively
+function getRowValue(row, key) {
+  if (!row) return undefined;
+  const normalizedKey = key.trim().toLowerCase();
+  const actualKey = Object.keys(row).find(
+    (k) => k.replace(/^\ufeff/, "").trim().toLowerCase() === normalizedKey
+  );
+  return actualKey ? row[actualKey] : undefined;
+}
+
 async function processRows(rows, res, filePath) {
   try {
     let inserted = [];
     let skipped = [];
 
     for (const row of rows) {
-      const companyName = row["Company name"]?.trim();
+      const companyName = getRowValue(row, "Company name")?.trim();
 
       if (!companyName) {
         skipped.push({ reason: "Missing company name", row });
@@ -95,29 +105,30 @@ async function processRows(rows, res, filePath) {
       ];
 
       const extractorArray = extractorColumns
-        .map((col) => row[col])
-        .filter((v) => v && v.trim().length > 0);
+        .map((col) => getRowValue(row, col))
+        .filter((v) => v !== undefined && v !== null && v.toString().trim().length > 0);
 
       // brokerSites as an array
-      const brokerSitesArray = row["Meglersider"]
-        ? [row["Meglersider"]]
-        : [];
+      const meglersider = getRowValue(row, "Meglersider");
+      const brokerSitesArray = meglersider ? [meglersider] : [];
 
       const newCompany = await Company.create({
         companyName,
-        companyImage: row["Company image"] || "",
-        address: row["Address (competitor)"] || "",
+        companyImage: getRowValue(row, "Company image") || "",
+        address: getRowValue(row, "Address (competitor)") || "",
         city: "",
-        description: row["Company text"] || "",
+        description: getRowValue(row, "Company text") || "",
         extractor: extractorArray,
         brokerSites: brokerSitesArray,
-        websiteAddress: row["Website address"] || "",
+        websiteAddress: getRowValue(row, "Website address") || "",
       });
 
       inserted.push(newCompany);
     }
 
-    fs.unlinkSync(filePath);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
 
     return res.status(200).json({
       message: "Company import completed",
@@ -127,6 +138,7 @@ async function processRows(rows, res, filePath) {
       skippedItems: skipped,
     });
   } catch (err) {
+    console.error("Error processing rows:", err);
     return res.status(500).json({ message: err.message });
   }
 }
