@@ -170,7 +170,6 @@ leadsLastMonth.forEach((l) => {
         createdAt: { $gte: startDate, $lte: endDate },
       }),
       totalRejects: await User.countDocuments({
-        createdAt: { $gte: startDate, $lte: endDate },
         status: "Reject",
       }),
 
