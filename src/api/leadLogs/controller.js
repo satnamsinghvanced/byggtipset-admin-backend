@@ -1,76 +1,70 @@
 const Lead = require("../../../models/user");
 const Partner = require("../../../models/partners");
 const formSelect = require("../../../models/formSelect");
+const mongoose = require("mongoose");
+const { Parser } = require("json2csv");
+
 
 exports.getAllLeads = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-
     const search = req.query.search || "";
     const status = req.query.status || "";
+    const formType = req.query.formType || "";
 
     const skip = (page - 1) * limit;
 
+    // Build initial filter
     let filter = {};
-
     if (status) filter.status = status;
 
+    if (formType) {
+      filter["dynamicFields.values.selectedFormTitle"] = {
+        $regex: `^${formType}$`,
+        $options: "i",
+      };
+    }
+
     if (search) {
-      filter.$or = [
+      const orFilters = [
         { "dynamicFields.values.name": { $regex: search, $options: "i" } },
         { "dynamicFields.values.email": { $regex: search, $options: "i" } },
         { "dynamicFields.values.phone": { $regex: search, $options: "i" } },
       ];
+
+      if (!isNaN(search)) {
+        orFilters.push({ uniqueId: Number(search) });
+      }
+
+      filter.$or = orFilters;
     }
 
+    // Count total documents
     const total = await Lead.countDocuments(filter);
 
-    const leads = await Lead.find(filter)
-      .populate("partnerIds", "name email phone wishes leadTypes")
+    let leads = await Lead.find(filter)
+      .populate("partnerIds.partnerId", "name email phone")
       .skip(skip)
       .limit(limit)
       .sort({ createdAt: -1 });
 
-    // const formatted = leads.map((lead) => {
-    //   const leadObj = lead.toObject();
-    //   const partner = lead.partnerIds?.[0] || null;
-
-    //   let computedProfit = 0;
-
-    //   if (partner) {
-    //     const leadPreference = lead.dynamicFields?.preferranceType;
-
-    //     // Check partner wishes
-    //     const preferenceWish = partner.wishes?.find(
-    //       (w) => w.question === "preferranceType"
-    //     );
-
-    //     const isSupported =
-    //       preferenceWish &&
-    //       preferenceWish.expectedAnswer?.includes(leadPreference);
-
-    //     if (isSupported) {
-    //       // Pick highest priced leadType
-    //       if (partner.leadTypes?.length) {
-    //         const highestPrice = Math.max(
-    //           ...partner.leadTypes.map((lt) => lt.price || 0)
-    //         );
-    //         computedProfit = highestPrice;
-    //       }
-    //     }
-    //   }
-
-    //   return {
-    //     ...leadObj,
-    //     partner,
-    //     profit: computedProfit,
-    //   };
-    // });
+    // Optional: partner search inside populated data
+    if (search) {
+      const lowerSearch = search.toLowerCase();
+      leads = leads.map((lead) => ({
+        ...lead.toObject(),
+        partnerIds: lead.partnerIds.filter(
+          ({ partnerId }) =>
+            partnerId?.name?.toLowerCase().includes(lowerSearch) ||
+            partnerId?.email?.toLowerCase().includes(lowerSearch)
+        ),
+      }));
+    }
 
     res.json({
       success: true,
-      leads: leads,
+      leads,
       pagination: {
         total,
         page,
@@ -86,6 +80,161 @@ exports.getAllLeads = async (req, res) => {
     });
   }
 };
+
+exports.exportLeadsCSV = async (req, res) => {
+  try {
+    const leads = await Lead.find({})
+      .populate("partnerIds.partnerId", "name")
+      .sort({ createdAt: -1 });
+
+    // 🔥 Fetch all forms ONE time
+    const forms = await formSelect.find({}, { _id: 1, formNumber: 1 });
+
+    // Create map: formId -> formNumber
+    const formMap = {};
+    forms.forEach((f) => {
+      formMap[f._id.toString()] = f.formNumber;
+    });
+
+    const csvData = leads.map((lead) => {
+      const values = lead.dynamicFields?.[0]?.values || {};
+      const formId = lead.dynamicFields?.[0]?.formId;
+
+      const partners = lead.partnerIds || [];
+      const partnerNames = partners.map(
+        (p) => p.partnerId?.name || "No value"
+      );
+      const partnerPrices = partners.map((p) => p.leadPrice || 0);
+
+      return {
+        ID: lead.uniqueId,
+        Status: lead.status,
+        "Lead type": lead.dynamicFields?.[0]?.formTitle || "",
+        "Lead type Id": formMap[formId] || "", // ✅ formNumber here
+
+        "Creation date": lead.createdAt
+          ? new Date(lead.createdAt).toLocaleDateString("en-GB")
+          : "",
+        "Creation time": lead.createdAt
+          ? new Date(lead.createdAt).toLocaleTimeString("en-GB")
+          : "",
+        "Creation datetime": lead.createdAt
+          ? new Date(lead.createdAt).toLocaleString("en-GB")
+          : "",
+
+        "Amount partners": partners.length,
+        "Partner 1": partnerNames[0] || "",
+        "Partner 2": partnerNames[1] || "",
+        "Partner 3": partnerNames[2] || "",
+
+        "Partner 1 profit": partnerPrices[0] || 0,
+        "Partner 2 profit": partnerPrices[1] || 0,
+        "Partner 3 profit": partnerPrices[2] || 0,
+
+        "Total profit": partnerPrices.reduce((a, b) => a + b, 0),
+
+        "Lead name": values.name || "",
+        Phone: values.phone || "",
+        "Lead e-mail": values.email || "",
+        Adresse: values.streetName || "",
+        "Postal code": values.postalCode || "",
+        "Accommodation type": values.accommodationType || "",
+        "Home size": values.homeSize || "",
+        "Room count": values.roomCount || "",
+        Condition: values.roomCondition || "",
+        "Selling timeline": values.sellingDate || "",
+      };
+    });
+
+    const parser = new Parser();
+    const csv = parser.parse(csvData);
+
+    res.header("Content-Type", "text/csv");
+    res.attachment("leads.csv");
+    return res.send(csv);
+  } catch (error) {
+    console.error("CSV Export Error:", error);
+    res.status(500).json({ message: "Failed to export CSV" });
+  }
+};
+
+
+exports.getLeadByPartnerName = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+
+    const skip = (page - 1) * limit;
+
+    if (!search) {
+      return res.status(400).json({
+        success: false,
+        message: "Partner name is required",
+      });
+    }
+
+    // 1️⃣ Find partner IDs by name
+    const partners = await Partner.find({
+      name: { $regex: search, $options: "i" },
+    }).select("_id");
+
+    if (!partners.length) {
+      return res.json({
+        success: true,
+        leads: [],
+        pagination: {
+          total: 0,
+          page,
+          limit,
+          pages: 0,
+        },
+      });
+    }
+
+    const partnerIds = partners.map((p) => p._id);
+
+    // 2️⃣ Count leads
+    const total = await Lead.countDocuments({
+      "partnerIds.partnerId": { $in: partnerIds },
+    });
+
+    // 3️⃣ Fetch leads
+    const leads = await Lead.find({
+      "partnerIds.partnerId": { $in: partnerIds },
+    })
+      .populate("partnerIds.partnerId", "name email phone")
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    // 4️⃣ Filter partnerIds inside leads
+    const filteredLeads = leads.map((lead) => ({
+      ...lead.toObject(),
+      partnerIds: lead.partnerIds.filter((p) =>
+        partnerIds.some((id) => id.toString() === p.partnerId?._id?.toString())
+      ),
+    }));
+
+    res.json({
+      success: true,
+      leads: filteredLeads,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit),
+      },
+    });
+  } catch (err) {
+    console.error("Get leads by partner name error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch leads",
+    });
+  }
+};
+
 exports.updateLeadStatus = async (req, res) => {
   try {
     const { leadId, status } = req.body;
@@ -140,19 +289,147 @@ exports.updateLeadProfit = async (req, res) => {
     console.error("Error updating lead profit:", error);
   }
 };
+exports.updateLeadPartnerPrice = async (req, res) => {
+  try {
+    const { leadId, partnerId, leadPrice } = req.body;
 
+    if (!leadId || !partnerId || leadPrice === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: "leadId, partnerId and leadPrice are required",
+      });
+    }
+
+    const lead = await Lead.findOneAndUpdate(
+      {
+        _id: leadId,
+        "partnerIds.partnerId": partnerId,
+      },
+      {
+        $set: {
+          "partnerIds.$.leadPrice": leadPrice,
+        },
+      },
+      { new: true }
+    );
+
+    if (!lead) {
+      return res.status(404).json({
+        success: false,
+        message: "Lead or Partner not found",
+      });
+    }
+
+    // 🔢 Recalculate total profit
+    const totalProfit = lead.partnerIds.reduce(
+      (sum, p) => sum + (p.leadPrice || 0),
+      0
+    );
+
+    lead.profit = totalProfit;
+    await lead.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Partner lead price updated successfully",
+      data: lead,
+    });
+  } catch (error) {
+    console.error("Error updating partner lead price:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+};
+exports.getLeadByPartnerName = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+
+    const skip = (page - 1) * limit;
+
+    if (!search) {
+      return res.status(400).json({
+        success: false,
+        message: "Partner name is required",
+      });
+    }
+
+    // 1️⃣ Find partner IDs by name
+    const partners = await Partner.find({
+      name: { $regex: search, $options: "i" },
+    }).select("_id");
+
+    if (!partners.length) {
+      return res.json({
+        success: true,
+        leads: [],
+        pagination: {
+          total: 0,
+          page,
+          limit,
+          pages: 0,
+        },
+      });
+    }
+
+    const partnerIds = partners.map((p) => p._id);
+
+    // 2️⃣ Count leads
+    const total = await Lead.countDocuments({
+      "partnerIds.partnerId": { $in: partnerIds },
+    });
+
+    // 3️⃣ Fetch leads
+    const leads = await Lead.find({
+      "partnerIds.partnerId": { $in: partnerIds },
+    })
+      .populate("partnerIds.partnerId", "name email phone")
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    // 4️⃣ Filter partnerIds inside leads
+    const filteredLeads = leads.map((lead) => ({
+      ...lead.toObject(),
+      partnerIds: lead.partnerIds.filter((p) =>
+        partnerIds.some((id) => id.toString() === p.partnerId?._id?.toString())
+      ),
+    }));
+
+    res.json({
+      success: true,
+      leads: filteredLeads,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit),
+      },
+    });
+  } catch (err) {
+    console.error("Get leads by partner name error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch leads",
+    });
+  }
+};
 exports.getLeadById = async (req, res) => {
   try {
     const { id } = req.params;
-
     if (!id) {
       return res.status(400).json({
         success: false,
         message: "Lead ID is required",
       });
     }
-
-    const lead = await Lead.findById(id).populate("partnerIds", "name email"); // ← fixes your partner issue
+    const lead = await Lead.findById(id).populate(
+      "partnerIds.partnerId",
+      "name email"
+    );
 
     const FormId = await formSelect.findById(lead.dynamicFields[0].formId);
     const formNumber = FormId.formNumber;
@@ -177,6 +454,235 @@ exports.getLeadById = async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || "Internal Server Error",
+    });
+  }
+};
+exports.getPartnerLeadInvoiceSummary = async (req, res) => {
+  try {
+    const { partnerId, startDate, endDate, filter } = req.query;
+
+    if (!partnerId) {
+      return res.status(400).json({
+        success: false,
+        message: "partnerId is required",
+      });
+    }
+
+    // ================= DATE FILTER =================
+    let dateFilter = {};
+
+    if (filter === "currentMonth") {
+      const start = new Date();
+      start.setDate(1);
+      start.setHours(0, 0, 0, 0);
+      dateFilter = { $gte: start };
+    } else if (filter === "previousMonth") {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const end = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        0,
+        23,
+        59,
+        59,
+        999
+      );
+      dateFilter = { $gte: start, $lte: end };
+    }
+
+    if (startDate || endDate) {
+      dateFilter = {};
+
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        dateFilter.$gte = start;
+      }
+
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.$lte = end;
+      }
+    }
+
+    // ================= PIPELINE =================
+    const result = await Lead.aggregate([
+      // 1️⃣ Match partner + date
+      {
+        $match: {
+          "partnerIds.partnerId": new mongoose.Types.ObjectId(partnerId),
+          ...(Object.keys(dateFilter).length && { createdAt: dateFilter }),
+        },
+      },
+
+      // 2️⃣ Unwind partnerIds
+      { $unwind: "$partnerIds" },
+
+      {
+        $match: {
+          "partnerIds.partnerId": new mongoose.Types.ObjectId(partnerId),
+        },
+      },
+
+      // 3️⃣ Lookup partner BEFORE grouping
+      {
+        $lookup: {
+          from: "collaboratepartners",
+          localField: "partnerIds.partnerId",
+          foreignField: "_id",
+          as: "partner",
+        },
+      },
+      {
+        $addFields: {
+          partnerName: {
+            $ifNull: [{ $first: "$partner.name" }, "Unknown Partner"],
+          },
+        },
+      },
+
+      // 4️⃣ Detect lead type
+      {
+        $addFields: {
+          leadType: {
+            $ifNull: [
+              { $first: "$dynamicFields.values.selectedFormTitle" },
+              "Unknown",
+            ],
+          },
+        },
+      },
+
+      // 5️⃣ Shape lead-level data
+      {
+        $project: {
+          partnerName: 1,
+          leadId: "$uniqueId",
+          leadType: 1,
+          price: "$partnerIds.leadPrice",
+          sent: "$createdAt",
+        },
+      },
+
+      // 6️⃣ Group everything by partner
+      {
+        $group: {
+          _id: "$partnerIds.partnerId",
+
+          partnerName: { $first: "$partnerName" },
+
+          leadDetails: {
+            $push: {
+              leadId: "$leadId",
+              type: "$leadType",
+              price: "$price",
+              sent: "$sent",
+            },
+          },
+
+          leadTypes: {
+            $push: {
+              leadType: "$leadType",
+              price: "$price",
+            },
+          },
+
+          totalLeads: { $sum: 1 },
+          grandTotal: { $sum: "$price" },
+        },
+      },
+      {
+        $lookup: {
+          from: "formselects", // ⚠️ collection name (check exact spelling)
+          localField: "leadTypes.leadType",
+          foreignField: "formTitle",
+          as: "formPrices",
+        },
+      },
+      // 7️⃣ Build lead type summary
+      {
+        $addFields: {
+          leadTypes: {
+            $map: {
+              input: { $setUnion: ["$leadTypes.leadType"] },
+              as: "type",
+              in: {
+                leadType: "$$type",
+
+                // ✅ COUNT
+                count: {
+                  $size: {
+                    $filter: {
+                      input: "$leadTypes",
+                      as: "lt",
+                      cond: { $eq: ["$$lt.leadType", "$$type"] },
+                    },
+                  },
+                },
+
+                // ✅ EXACT price from FormSelect table
+                pricePerLead: {
+                  $ifNull: [
+                    {
+                      $first: {
+                        $map: {
+                          input: {
+                            $filter: {
+                              input: "$formPrices",
+                              as: "fp",
+                              cond: { $eq: ["$$fp.formTitle", "$$type"] },
+                            },
+                          },
+                          as: "x",
+                          in: "$$x.price",
+                        },
+                      },
+                    },
+                    0,
+                  ],
+                },
+
+                // ✅ TOTAL = sum of saved lead prices
+                totalPrice: {
+                  $sum: {
+                    $map: {
+                      input: {
+                        $filter: {
+                          input: "$leadTypes",
+                          as: "lt",
+                          cond: { $eq: ["$$lt.leadType", "$$type"] },
+                        },
+                      },
+                      as: "x",
+                      in: "$$x.price",
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: result[0] || {
+        _id: partnerId,
+        partnerName: "Unknown Partner",
+        leadTypes: [],
+        leadDetails: [],
+        totalLeads: 0,
+        grandTotal: 0,
+      },
+    });
+  } catch (error) {
+    console.error("Invoice summary error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to generate invoice summary",
     });
   }
 };

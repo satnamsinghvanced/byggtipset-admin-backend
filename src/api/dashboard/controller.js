@@ -3,8 +3,7 @@ const Partner = require("../../../models/partners");
 
 exports.getDashboardStats = async (req, res) => {
   try {
-    const { start, end } = req.query;
-
+    const { start, end, partnerName } = req.query;
     let startDate, endDate;
 
     if (!start || !end) {
@@ -16,36 +15,55 @@ exports.getDashboardStats = async (req, res) => {
       endDate = new Date(end);
       endDate.setHours(23, 59, 59, 999);
     }
+const lastMonthStart = new Date(
+  startDate.getFullYear(),
+  startDate.getMonth() - 1,
+  1
+);
 
-    const lastMonthStart = new Date(
-      startDate.getFullYear(),
-      startDate.getMonth() - 1,
-      1
-    );
-    const lastMonthEnd = new Date(
-      startDate.getFullYear(),
-      startDate.getMonth(),
-      0
-    );
+const lastMonthEnd = new Date(
+  lastMonthStart.getFullYear(),
+  lastMonthStart.getMonth(),
+  startDate.getDate(),
+ 23,59,59,999
+);
+
+    const partnerFilterStage = partnerName
+      ? [
+          { $unwind: "$partnerIds" },
+          {
+            $lookup: {
+              from: "collaboratepartners",
+              localField: "partnerIds.partnerId",
+              foreignField: "_id",
+              as: "partner",
+            },
+          },
+          { $unwind: "$partner" },
+          {
+            $match: {
+              "partner.name": { $regex: partnerName, $options: "i" },
+            },
+          },
+        ]
+      : [{ $unwind: "$partnerIds" }];
+
     const topPartners = await User.aggregate([
       { $unwind: "$partnerIds" },
-
       {
         $match: {
           createdAt: { $gte: startDate, $lte: endDate },
+          status: "Complete",
         },
       },
-
       {
         $group: {
-          _id: "$partnerIds",
+          _id: "$partnerIds.partnerId",
           totalLeads: { $sum: 1 },
         },
       },
-
       { $sort: { totalLeads: -1 } },
       { $limit: 5 },
-
       {
         $lookup: {
           from: "collaboratepartners",
@@ -54,9 +72,7 @@ exports.getDashboardStats = async (req, res) => {
           as: "partner",
         },
       },
-
       { $unwind: "$partner" },
-
       {
         $project: {
           _id: 1,
@@ -65,51 +81,51 @@ exports.getDashboardStats = async (req, res) => {
         },
       },
     ]);
+ const leadsCurrentRange = await User.aggregate([
+  { $unwind: "$partnerIds" },
+  {
+    $match: {
+      "partnerIds.partnerId": { $ne: null },
+      createdAt: { $gte: startDate, $lte: endDate },
+      status: "Complete",
+    },
+  },
+  {
+    $group: {
+      _id: "$partnerIds.partnerId",
+      leads: { $sum: 1 },
+    },
+  },
+]);
 
-    const leadsCurrentRange = await User.aggregate([
-      { $unwind: "$partnerIds" },
 
-      {
-        $match: {
-          createdAt: { $gte: startDate, $lte: endDate },
-        },
-      },
+   const leadsLastMonth = await User.aggregate([
+  { $unwind: "$partnerIds" },
+  {
+    $match: {
+      "partnerIds.partnerId": { $ne: null },
+      createdAt: { $gte: lastMonthStart, $lte: lastMonthEnd },
+      status: "Complete",
+    },
+  },
+  {
+    $group: {
+      _id: "$partnerIds.partnerId",
+      leads: { $sum: 1 },
+    },
+  },
+]);
 
-      {
-        $group: {
-          _id: "$partnerIds",
-          leads: { $sum: 1 },
-        },
-      },
-    ]);
+const lastMonthMap = {};
 
-    const leadsLastMonth = await User.aggregate([
-      { $unwind: "$partnerIds" },
-
-      {
-        $match: {
-          createdAt: { $gte: lastMonthStart, $lte: lastMonthEnd },
-        },
-      },
-
-      {
-        $group: {
-          _id: "$partnerIds",
-          leads: { $sum: 1 },
-        },
-      },
-    ]);
-
-    const lastMonthMap = {};
-    leadsLastMonth.forEach((l) => {
-      lastMonthMap[l._id] = l.leads;
-    });
-
-    const growthData = await Promise.all(
+leadsLastMonth.forEach((l) => {
+  lastMonthMap[l._id.toString()] = l.leads;
+});
+      const growthData = await Promise.all(
       leadsCurrentRange.map(async (curr) => {
         const partner = await Partner.findById(curr._id).select("name");
 
-        const prev = lastMonthMap[curr._id] || 0;
+       const prev = Number(lastMonthMap[curr._id.toString()] ?? 0);
 
         const growth = prev === 0 ? 100 : ((curr.leads - prev) / prev) * 100;
 
@@ -122,30 +138,29 @@ exports.getDashboardStats = async (req, res) => {
         };
       })
     );
-
     const trendlineData = await User.aggregate([
       {
         $match: {
           createdAt: { $gte: startDate, $lte: endDate },
         },
       },
-
+      ...partnerFilterStage,
       {
         $group: {
           _id: {
-            $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+            date: {
+              $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+            },
           },
           leads: { $sum: 1 },
         },
       },
-
-      { $sort: { _id: 1 } },
-
+      { $sort: { "_id.date": 1 } },
       {
         $project: {
-          date: "$_id",
-          leads: 1,
           _id: 0,
+          date: "$_id.date",
+          leads: 1,
         },
       },
     ]);
@@ -154,34 +169,50 @@ exports.getDashboardStats = async (req, res) => {
       totalLeads: await User.countDocuments({
         createdAt: { $gte: startDate, $lte: endDate },
       }),
+      totalRejects: await User.countDocuments({
+        createdAt: { $gte: startDate, $lte: endDate },
+        status: "Reject",
+      }),
+
+      totalPending: await User.countDocuments({
+        status: "Pending",
+      }),
+
       totalPartners: await Partner.countDocuments(),
-      leadsThisMonth: leadsCurrentRange.reduce((a, b) => a + b.leads, 0),
+
+      leadsThisMonth: growthData.reduce(
+        (sum, g) => sum + (g?.leadsThisMonth || 0),
+        0,
+      ),
     };
 
     res.json({
       success: true,
       topPartners,
-      growthData,
+      growthData: growthData.filter(Boolean),
       trendlineData,
       totals,
     });
-  } catch (error) {
-    console.error("Dashboard Stats Error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to load dashboard stats",
-      error,
-    });
-  }
+  }catch (error) {
+  console.error("Dashboard Stats Error:", error.message);
+  console.error(error.stack);
+
+  res.status(500).json({
+    success: false,
+    message: "Failed to load dashboard stats",
+    error: error.message,
+  });
+}
+
 };
 
 exports.totalLeads = async (req, res) => {
   try {
     const leadCounts = await User.aggregate([
-      { $unwind: "$dynamicFields" }, // flatten the array
+      { $unwind: "$dynamicFields" },
       {
         $group: {
-          _id: "$dynamicFields.formTitle", // group by formTitle
+          _id: "$dynamicFields.formTitle",
           count: { $sum: 1 },
         },
       },
