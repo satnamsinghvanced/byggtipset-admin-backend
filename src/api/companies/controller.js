@@ -15,7 +15,7 @@ exports.createCompany = async (req, res) => {
       ...restOfData
     } = req.body;
 
-    const existingCompany = await Company.findOne({ email });
+    const existingCompany = await Company.findOne({ companyName });
     if (existingCompany) {
       return res
         .status(400)
